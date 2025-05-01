@@ -1,0 +1,10 @@
+/classes
+/dev
+/log
+/target
+/.artifacts
+/.cpcache
+/.DS_Store
+/.env
+*.jar
+*.class
