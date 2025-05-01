@@ -105,16 +105,17 @@
    :type  (type obj)})
 
 (defn validate-constructor-opts!
-  [{{:keys [api-token dataset]} :conn-opts rate-ms :rate-ms}]
+  [{{:keys [api-token dataset]} :conn-opts :as constructor-opts}]
   (when-not (string? api-token)
     (throw
       (ex-info "Expected `:conn-opts/api-token` string" (val+type api-token))))
   (when-not (string? dataset)
     (throw
       (ex-info "Expected `:conn-opts/dataset` string" (val+type dataset))))
-  (when-not (pos-int? rate-ms)
-    (throw
-      (ex-info "Expected `:rate-ms` positive integer" (val+type rate-ms)))))
+  (let [rate-ms (get constructor-opts :rate-ms ::default)]
+    (when-not (or (identical? ::default rate-ms) (pos-int? rate-ms))
+      (throw
+        (ex-info "Expected `:rate-ms` positive integer" (val+type rate-ms))))))
 
 (defn handler:axiom
   "Builds a stateful signal handler that sends all signals to Axiom Ingest API.
