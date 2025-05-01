@@ -7,7 +7,7 @@
 ;; You must not remove this notice, or any other, from this software.
 
 (ns marksto.telemere.axiom
-  "A set of things necessary for Telemere-to-Axiom integration.
+  "A set of things necessary for Telemere-to-Axiom.co integration.
 
    Telemere: https://github.com/taoensso/telemere
    Axiom.co: https://axiom.co"
@@ -54,7 +54,7 @@
 (def renames {:inst :_time
               :msg_ :msg})
 
-(defn default-prepare
+(defn default-prepare-signal
   [{:keys [data] :as signal}]
   (-> signal
       (default-clean-signal-fn)
@@ -140,7 +140,7 @@
     :or   {conn-opts  {:api-token nil
                        :dataset   nil}
            rate-ms    3000
-           prepare-fn default-prepare
+           prepare-fn default-prepare-signal
            ex-handler default-handle-ex}
     :as   constructor-opts}]
   (validate-constructor-opts! constructor-opts)

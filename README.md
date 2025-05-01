@@ -2,21 +2,22 @@
 
 [![Clojars Project](https://img.shields.io/clojars/v/com.github.marksto/telemere.axiom.svg)](https://clojars.org/com.github.marksto/telemere.axiom)
 
-A set of things necessary for [Telemere](https://github.com/taoensso/telemere)-to-[Axiom](https://axiom.co) integration.
+A set of things necessary for [Telemere](https://github.com/taoensso/telemere)-to-[Axiom.co](https://axiom.co)
+integration.
 
-Defines and works through a customizable [signal handler](https://github.com/taoensso/telemere/wiki/4-Handlers).
+Defines and operates through a configurable [signal handler](https://github.com/taoensso/telemere/wiki/4-Handlers) that
+prepares signals and periodically sends them in batches to
+the [Ingest API](https://axiom.co/docs/send-data/ingest#ingest-api).
 
 ## Documentation
 
-Please, check out the `handler:axiom` function docstring.
+Please see the docstring of the `handler:axiom` function.
 
 ## Usage
 
-Here `<AXIOM_API_TOKEN>` and `<AXIOM_DATASET>` are the values that you've configured in Axiom. See the [Settings](https://axiom.co/docs/reference/settings) docs for more.
-
 ```clojure
 (require '[marksto.telemere.axiom :as mta])
-(require '[taoensso.telemere :as tt])
+(require '[taoensso.telemere :as tel])
 
 (def handler-opts
   {:conn-opts {:api-token <AXIOM_API_TOKEN>
@@ -24,12 +25,14 @@ Here `<AXIOM_API_TOKEN>` and `<AXIOM_DATASET>` are the values that you've config
 
 (def handler-fn (mta/handler:axiom handler-opts))
 
-(tt/add-handler! :axiom handler-fn)
+(tel/add-handler! :axiom handler-fn)
 ; or
-(tt/add-handler! :axiom handler-fn <dispatch-opts>)
+(tel/add-handler! :axiom handler-fn <dispatch-opts>)
 ```
+
+Here `<AXIOM_API_TOKEN>` and `<AXIOM_DATASET>` are the values you configured in Axiom. For more details, see the
+Axiom [Settings](https://axiom.co/docs/reference/settings) documentation.
 
 ## License
 
-Copyright &copy; 2025 [Mark Sto](https://github.com/marksto).  
 Licensed under [EPL 1.0](LICENSE) (same as Clojure).
