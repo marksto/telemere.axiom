@@ -1,4 +1,4 @@
-# Telemere-to-Axiom
+# telemere.axiom
 
 A set of things necessary for [Telemere](https://github.com/taoensso/telemere)-to-[Axiom](https://axiom.co) integration.
 

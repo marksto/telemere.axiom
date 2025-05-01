@@ -22,7 +22,7 @@
       opts)
 
 (defn- pom-template [version]
-       [[:description "FIXME: my new library."]
+       [[:description "A set of things necessary for Telemere-to-Axiom integration."]
         [:url "https://github.com/marksto/telemere.axiom"]
         [:licenses
          [:license
