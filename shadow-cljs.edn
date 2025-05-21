@@ -1,0 +1,16 @@
+{:source-paths ["src"]
+
+ :deps {}
+
+ :builds {}
+ #_{:dev-browser
+  {:target     :browser
+   :output-dir "public/js"
+   :asset-path "/js"
+   :modules    {:main {:init-fn marksto.telemere.axiom/init}}
+   :devtools   {:http-root "public"
+                :http-port 8700}}
+
+  :dev-node
+  {:target    :node-repl
+   :output-to "out/node-repl.js"}}} 

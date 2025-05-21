@@ -4,7 +4,12 @@
 /target
 /.artifacts
 /.cpcache
-/.DS_Store
+/.calva
+/.clj-kondo
+/.lsp
+/.shadow-cljs
+**/.DS_Store
 /.env
 *.jar
 *.class
+
