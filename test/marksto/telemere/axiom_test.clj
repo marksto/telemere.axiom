@@ -21,6 +21,9 @@
 (def fake-api-url:success-re #"^https://successful.axiom.co.+")
 (def fake-api-url:failure-re #"^https://error(\d+).axiom.co.+")
 
+(def obj-mapper (sut/->default-obj-mapper))
+(def parse-json #(json/read-value % obj-mapper))
+
 (defn response:success
   [signals]
   {:status  200
@@ -43,7 +46,7 @@
                :failures       []
                :failed         0
                :processedBytes (rand-int 1000)}
-              sut/default-obj-mapper)})
+              obj-mapper)})
 
 (defn response:failure
   [status-code]
@@ -61,7 +64,7 @@
    :body    (json/write-value-as-string
               {:code    status-code
                :message "Fake error"}
-              sut/default-obj-mapper)})
+              obj-mapper)})
 
 (defonce *test-state (atom nil))
 
@@ -77,9 +80,6 @@
                (update-in [:requests (if successful? :succeeded :failed)]
                           conj request)
                (update :batches conj (:body request))))))
-
-(defn parse-json [obj]
-  (json/read-value obj sut/default-obj-mapper))
 
 (defn respond
   [successful? {:keys [url] :as request}]
@@ -210,7 +210,7 @@
                         :data {:error true}}]
 
               :ctx    {:req-id 1234567890}}
-             (sut/default-prepare-fn some-runtime-signal))))))
+             ((sut/->default-prepare-fn) some-runtime-signal))))))
 
 (deftest handler:axiom-failed-test-signal-test
   (testing "failed test signal"

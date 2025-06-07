@@ -39,7 +39,7 @@
 
 (def axiom-date-format "yyyy-MM-dd'T'HH:mm:ssXXX")
 
-(def default-obj-mapper
+(defn ->default-obj-mapper []
   (json/object-mapper {:date-format   axiom-date-format
                        :decode-key-fn true}))
 
@@ -97,7 +97,7 @@
           (set/rename-keys renames)
           (prepare-data)))))
 
-(def default-prepare-fn
+(defn ->default-prepare-fn []
   (build-prepare-fn {:clean-signal?  true
                      :data-update-fn #(with-out-str (pp/pprint %))}))
 
@@ -219,18 +219,15 @@
 
    Returns a handler function."
   [{:keys [conn-opts prepare-fn obj-mapper ex-handler batch-size period-ms]
-    :or   {conn-opts  {:api-url   axiom-api-url
-                       :api-token nil
-                       :dataset   nil
-                       :org-id    nil}
-           prepare-fn default-prepare-fn
-           obj-mapper default-obj-mapper
-           ex-handler print-ex-to-stderr
-           batch-size max-batch-size
+    :or   {batch-size max-batch-size
            period-ms  1000}
     :as   constructor-opts}]
   (validate-constructor-opts! constructor-opts)
-  (let [send! (build-send! conn-opts obj-mapper)
+  (let [prepare-fn (or prepare-fn (->default-prepare-fn))
+        obj-mapper (or obj-mapper (->default-obj-mapper))
+        ex-handler (or ex-handler print-ex-to-stderr)
+
+        send! (build-send! conn-opts obj-mapper)
         _ (try
             (send! true [(test-signal)])
             (catch Exception ex
