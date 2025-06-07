@@ -104,6 +104,11 @@
       (print-cause-trace (ex-info msg {:arg arg} t))
       (flush))))
 
+(def max-batch-size
+  "Maximum events in a batch as per the \"Limits on ingested data\".
+   https://axiom.co/docs/restapi/api-limits#limits-on-ingested-data"
+  10000)
+
 (defn shutdown-uninterruptedly!
   [executor period-ms]
   (ScheduledExecutorService/.shutdown executor)
@@ -119,12 +124,14 @@
   (let [*signals (atom [])
         executor (Executors/newSingleThreadScheduledExecutor)
         activity (fn []
-                   (let [[signals] (reset-vals! *signals [])]
-                     (when (seq signals)
-                       (try
-                         (process-batch-fn signals)
-                         (catch Throwable t
-                           (ex-handler :process-batch t signals))))))]
+                   (when-some [batch (->> @*signals
+                                          (take max-batch-size)
+                                          (not-empty))]
+                     (try
+                       (process-batch-fn batch)
+                       (swap! *signals #(drop (count batch) %))
+                       (catch Throwable t
+                         (ex-handler :process-batch t batch)))))]
     (ScheduledExecutorService/.scheduleAtFixedRate
       executor activity period-ms period-ms TimeUnit/MILLISECONDS)
     {:add!  (fn add-to-batch [signal]
