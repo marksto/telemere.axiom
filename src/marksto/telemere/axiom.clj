@@ -105,7 +105,7 @@
       (flush))))
 
 (defn create-batch-processor!
-  [process-batch-fn ex-handler rate-ms]
+  [process-batch-fn ex-handler period-ms]
   (let [*signals (atom [])
         executor (Executors/newSingleThreadScheduledExecutor)
         activity (fn []
@@ -116,7 +116,7 @@
                          (catch Throwable t
                            (ex-handler :process-batch t signals))))))]
     (ScheduledExecutorService/.scheduleAtFixedRate
-      executor activity rate-ms rate-ms TimeUnit/MILLISECONDS)
+      executor activity period-ms period-ms TimeUnit/MILLISECONDS)
     {:add!  (fn add-to-batch [signal]
               (swap! *signals conj signal)
               true)
@@ -136,17 +136,19 @@
    :type  (type obj)})
 
 (defn validate-constructor-opts!
-  [{{:keys [api-token dataset]} :conn-opts :as constructor-opts}]
+  [{{:keys [api-token dataset]} :conn-opts
+    period-ms                   :period-ms
+    :as                         constructor-opts}]
   (when-not (string? api-token)
     (throw
-      (ex-info "Expected `:conn-opts/api-token` string" (val+type api-token))))
+      (ex-info "Expected `:conn-opts :api-token` string" (val+type api-token))))
   (when-not (string? dataset)
     (throw
-      (ex-info "Expected `:conn-opts/dataset` string" (val+type dataset))))
-  (let [rate-ms (get constructor-opts :rate-ms ::default)]
-    (when-not (or (identical? ::default rate-ms) (pos-int? rate-ms))
-      (throw
-        (ex-info "Expected `:rate-ms` positive integer" (val+type rate-ms))))))
+      (ex-info "Expected `:conn-opts :dataset` string" (val+type dataset))))
+  (when (and (contains? constructor-opts :period-ms)
+             (not (pos-int? period-ms)))
+    (throw
+      (ex-info "Expected `:period-ms` positive integer" (val+type period-ms)))))
 
 (defn handler:axiom
   "Builds a stateful signal handler that sends all signals to Axiom Ingest API.
@@ -155,9 +157,6 @@
    - `:conn-opts`  — a map with all mandatory (`:api-token` and `:dataset`) and
                      some optional (`:api-url`, `:org-id`) keys, which are used
                      to establish a connection with the Axiom via REST API;
-   - `:rate-ms`    — a positive int that sets the period in millis at which all
-                     received signals are prepared and sent in batches; default
-                     is 3000 (3 seconds);
    - `:prepare-fn` — a unary fn that modifies every signal prior to sending it;
                      the default impl applies the Telemere's `clean-signal-fn`,
                      renames the `:inst` key to `:_time` and the `:msg_` key to
@@ -168,18 +167,21 @@
    - `:ex-handler` — a ternary fn of `phase` #{:prepare-signal :process-batch},
                      Throwable and `arg` (a single signal or vector of signals,
                      depending on the `phase`) that handles an exception/error;
-                     the default impl simply prints out an exception.
+                     the default impl simply prints out an exception;
+   - `:period-ms`  — a positive int that sets the period in millis at which all
+                     received signals are prepared and sent in batches; default
+                     is 1000 (1 second) as in other backend Axiom client libs.
 
    Returns a handler function."
-  [{:keys [conn-opts rate-ms prepare-fn obj-mapper ex-handler]
+  [{:keys [conn-opts prepare-fn obj-mapper ex-handler period-ms]
     :or   {conn-opts  {:api-url   axiom-api-url
                        :api-token nil
                        :dataset   nil
                        :org-id    nil}
-           rate-ms    3000
            prepare-fn default-prepare-fn
            obj-mapper default-obj-mapper
-           ex-handler print-ex-to-stderr}
+           ex-handler print-ex-to-stderr
+           period-ms  1000}
     :as   constructor-opts}]
   (validate-constructor-opts! constructor-opts)
   (let [send! (build-send! conn-opts obj-mapper)
@@ -199,7 +201,7 @@
                              (send! false)))
 
         {:keys [add! stop!]}
-        (create-batch-processor! prepare+send! ex-handler rate-ms)]
+        (create-batch-processor! prepare+send! ex-handler period-ms)]
     (with-meta
       (fn a-handler:axiom
         ([]
