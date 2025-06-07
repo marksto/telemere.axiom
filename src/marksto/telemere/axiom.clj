@@ -120,12 +120,12 @@
                   false)))))
 
 (defn create-batch-processor!
-  [process-batch-fn ex-handler period-ms]
+  [process-batch-fn ex-handler batch-size period-ms]
   (let [*signals (atom [])
         executor (Executors/newSingleThreadScheduledExecutor)
-        activity (fn []
+        activity (fn [batch-size]
                    (when-some [batch (->> @*signals
-                                          (take max-batch-size)
+                                          (take batch-size)
                                           (not-empty))]
                      (try
                        (process-batch-fn batch)
@@ -133,14 +133,14 @@
                        (catch Throwable t
                          (ex-handler :process-batch t batch)))))]
     (ScheduledExecutorService/.scheduleAtFixedRate
-      executor activity period-ms period-ms TimeUnit/MILLISECONDS)
+      executor #(activity batch-size) period-ms period-ms TimeUnit/MILLISECONDS)
     {:add!  (fn add-to-batch [signal]
               (swap! *signals conj signal)
               true)
      :stop! (fn []
               (shutdown-uninterruptedly! executor period-ms)
               ;; Make sure all received signals get flushed!
-              (activity))}))
+              (activity max-batch-size))}))
 
 (defn test-signal []
   {:_time (Instant/now)
@@ -156,6 +156,7 @@
 
 (defn validate-constructor-opts!
   [{{:keys [api-token dataset]} :conn-opts
+    batch-size                  :batch-size
     period-ms                   :period-ms
     :as                         constructor-opts}]
   (when-not (string? api-token)
@@ -164,6 +165,10 @@
   (when-not (string? dataset)
     (throw
       (ex-info "Expected `:conn-opts :dataset` string" (val+type dataset))))
+  (when (and (contains? constructor-opts :batch-size)
+             (not (pos-int? batch-size)))
+    (throw
+      (ex-info "Expected `:batch-size` positive integer" (val+type batch-size))))
   (when (and (contains? constructor-opts :period-ms)
              (not (pos-int? period-ms)))
     (throw
@@ -187,12 +192,14 @@
                      Throwable and `arg` (a single signal or vector of signals,
                      depending on the `phase`) that handles an exception/error;
                      the default impl simply prints out an exception;
+   - `:batch-size` — a positive int that limits the size of each signals batch;
+                     defaults to the `max-batch-size`, the Axiom's limit;
    - `:period-ms`  — a positive int that sets the period in millis at which all
                      received signals are prepared and sent in batches; default
                      is 1000 (1 second) as in other backend Axiom client libs.
 
    Returns a handler function."
-  [{:keys [conn-opts prepare-fn obj-mapper ex-handler period-ms]
+  [{:keys [conn-opts prepare-fn obj-mapper ex-handler batch-size period-ms]
     :or   {conn-opts  {:api-url   axiom-api-url
                        :api-token nil
                        :dataset   nil
@@ -200,6 +207,7 @@
            prepare-fn default-prepare-fn
            obj-mapper default-obj-mapper
            ex-handler print-ex-to-stderr
+           batch-size max-batch-size
            period-ms  1000}
     :as   constructor-opts}]
   (validate-constructor-opts! constructor-opts)
@@ -220,7 +228,7 @@
                              (send! false)))
 
         {:keys [add! stop!]}
-        (create-batch-processor! prepare+send! ex-handler period-ms)]
+        (create-batch-processor! prepare+send! ex-handler batch-size period-ms)]
     (with-meta
       (fn a-handler:axiom
         ([]
