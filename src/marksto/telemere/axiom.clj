@@ -18,10 +18,16 @@
             [clojure.stacktrace :refer [print-cause-trace]]
             [jsonista.core :as json])
   (:import (java.time Instant)
-           (java.util.concurrent Executors ScheduledExecutorService TimeUnit)))
+           (java.util.concurrent ConcurrentLinkedDeque
+                                 Executors
+                                 ScheduledExecutorService
+                                 TimeUnit)))
 
-;; TODO: Account for dynamic rate limits?
-;;       https://axiom.co/docs/restapi/api-limits#ingest-limits
+;; TODO: Account for other ingestion limits?
+;;       - data volume limits via the 'X-IngestLimit-***' headers
+;;         https://axiom.co/docs/restapi/api-limits#ingest-limits
+;;       - "Maximum event size" and "Maximum field name length"
+;;         https://axiom.co/docs/restapi/api-limits#limits-on-ingested-data
 
 ;; TODO: Support 'gzip'-encoding of requests?
 ;;       https://github.com/axiomhq/axiom-js/blob/1d0de5fc52c2c8820dfbfc1827b673be36136089/packages/js/src/client.ts#L34
@@ -119,24 +125,37 @@
                   (Thread/.interrupt (Thread/currentThread))
                   false)))))
 
+(defn collect-batch
+  [all-sigs batch-size]
+  (-> (loop [i 0, acc (transient [])]
+        (if (< i batch-size)
+          (if-some [signal (ConcurrentLinkedDeque/.pollFirst all-sigs)]
+            (recur (inc i) (conj! acc signal))
+            acc)
+          acc))
+      (persistent!)
+      (not-empty)))
+
+(defn restore-batch
+  [all-sigs batch]
+  (doseq [signal (rseq batch)]
+    (ConcurrentLinkedDeque/.addFirst all-sigs signal)))
+
 (defn create-batch-processor!
   [process-batch-fn ex-handler batch-size period-ms]
-  (let [*signals (atom [])
+  (let [all-sigs (ConcurrentLinkedDeque.)
         executor (Executors/newSingleThreadScheduledExecutor)
         activity (fn [batch-size]
-                   (when-some [batch (->> @*signals
-                                          (take batch-size)
-                                          (not-empty))]
+                   (when-some [batch (collect-batch all-sigs batch-size)]
                      (try
                        (process-batch-fn batch)
-                       (swap! *signals #(drop (count batch) %))
                        (catch Throwable t
+                         (restore-batch all-sigs batch)
                          (ex-handler :process-batch t batch)))))]
     (ScheduledExecutorService/.scheduleAtFixedRate
       executor #(activity batch-size) period-ms period-ms TimeUnit/MILLISECONDS)
     {:add!  (fn add-to-batch [signal]
-              (swap! *signals conj signal)
-              true)
+              (ConcurrentLinkedDeque/.offerLast all-sigs signal))
      :stop! (fn []
               (shutdown-uninterruptedly! executor period-ms)
               ;; Make sure all received signals get flushed!
