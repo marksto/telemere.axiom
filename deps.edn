@@ -8,9 +8,11 @@
  :aliases
  {:test
   {:extra-paths ["test"]
-   :extra-deps  {com.taoensso/telemere                {:mvn/version "1.0.0"}
+   :extra-deps  {clj-http-fake/clj-http-fake          {:mvn/version "1.0.4"}
+                 com.taoensso/telemere                {:mvn/version "1.0.1"}
                  io.github.cognitect-labs/test-runner {:git/tag "v0.5.1"
-                                                       :git/sha "dfb30dd"}}}
+                                                       :git/sha "dfb30dd"}
+                 nubank/matcher-combinators           {:mvn/version "3.9.1"}}}
 
   :build
   {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.5"}
