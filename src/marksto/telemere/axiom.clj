@@ -104,6 +104,16 @@
       (print-cause-trace (ex-info msg {:arg arg} t))
       (flush))))
 
+(defn shutdown-uninterruptedly!
+  [executor period-ms]
+  (ScheduledExecutorService/.shutdown executor)
+  (while (not (try
+                (ScheduledExecutorService/.awaitTermination
+                  executor (quot period-ms 10) TimeUnit/MILLISECONDS)
+                (catch InterruptedException _
+                  (Thread/.interrupt (Thread/currentThread))
+                  false)))))
+
 (defn create-batch-processor!
   [process-batch-fn ex-handler period-ms]
   (let [*signals (atom [])
@@ -121,7 +131,9 @@
               (swap! *signals conj signal)
               true)
      :stop! (fn []
-              (ScheduledExecutorService/.shutdown executor))}))
+              (shutdown-uninterruptedly! executor period-ms)
+              ;; Make sure all received signals get flushed!
+              (activity))}))
 
 (defn test-signal []
   {:_time (Instant/now)
