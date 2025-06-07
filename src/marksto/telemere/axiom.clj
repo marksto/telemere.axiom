@@ -48,23 +48,44 @@
         (when ret-body?
           (-> resp :body (json/read-value default-mapper)))))))
 
-(def default-clean-signal-fn
-  ((requiring-resolve 'taoensso.telemere.utils/clean-signal-fn)))
+(def *default-clean-signal-fn
+  (delay (requiring-resolve 'taoensso.telemere.utils/clean-signal-fn)))
 
 (def renames {:inst :_time
               :msg_ :msg})
 
-(defn default-prepare-signal
-  [{:keys [data] :as signal}]
-  (-> signal
-      (default-clean-signal-fn)
-      (update :msg_ force)
-      (set/rename-keys renames)
-      (cond->
-        (some? data)
-        (update :data #(with-out-str (pp/pprint %))))))
+(defn build-prepare-fn
+  "Builds a unary fn for preparing an individual signal.
 
-(defn default-handle-ex
+   Optional parameters:
+   - `:clean-signal?`     — if `true` will call the Telemere's built-in
+                            utility for cleaning the signal from noise;
+   - `:clean-signal-opts` — a map of options passed to `clean-signal-fn`
+                            in case the `:clean-signal?` is `true`;
+   - `:data-update-fn`    — a unary fn for updating the signal's `:data`
+                            value, e.g. stringifying/prettifying it."
+  [{:keys [clean-signal? clean-signal-opts data-update-fn]}]
+  (let [clean-signal (if clean-signal?
+                       (@*default-clean-signal-fn clean-signal-opts)
+                       identity)
+        prepare-data (if data-update-fn
+                       (fn [{:keys [data] :as signal}]
+                         (if (some? data)
+                           (update signal :data data-update-fn)
+                           signal))
+                       identity)]
+    (fn [signal]
+      (-> signal
+          (clean-signal)
+          (update :msg_ force)
+          (set/rename-keys renames)
+          (prepare-data)))))
+
+(def default-prepare-fn
+  (build-prepare-fn {:clean-signal?  true
+                     :data-update-fn #(with-out-str (pp/pprint %))}))
+
+(defn print-ex-to-stderr
   [phase ^Throwable t arg]
   (let [msg (case phase
               :prepare-signal "Error while preparing a signal"
@@ -129,7 +150,8 @@
    - `:prepare-fn` — a unary fn that modifies every signal prior to sending it;
                      the default impl applies the Telemere's `clean-signal-fn`,
                      renames the `:inst` key to `:_time` and the `:msg_` key to
-                     `:msg`, and stringifies the `:data` value, if any;
+                     `:msg`, and stringifies the `:data` value, if there's any;
+                     see the `build-prepare-fn`;
    - `:ex-handler` — a ternary fn of `phase` #{:prepare-signal :process-batch},
                      Throwable and `arg` (a single signal or vector of signals,
                      depending on the `phase`) that handles an exception/error;
@@ -140,8 +162,8 @@
     :or   {conn-opts  {:api-token nil
                        :dataset   nil}
            rate-ms    3000
-           prepare-fn default-prepare-signal
-           ex-handler default-handle-ex}
+           prepare-fn default-prepare-fn
+           ex-handler print-ex-to-stderr}
     :as   constructor-opts}]
   (validate-constructor-opts! constructor-opts)
   (let [send! (->send! conn-opts)
