@@ -26,8 +26,10 @@
 ;; TODO: Support sending data using OpenTelemetry?
 ;;       https://axiom.co/docs/send-data/opentelemetry
 
-(def default-mapper
-  (json/object-mapper {:date-format   "yyyy-MM-dd'T'HH:mm:ssXXX"
+(def axiom-date-format "yyyy-MM-dd'T'HH:mm:ssXXX")
+
+(def default-obj-mapper
+  (json/object-mapper {:date-format   axiom-date-format
                        :decode-key-fn true}))
 
 (defn base-request [api-token]
@@ -36,17 +38,18 @@
    :headers      {"Authorization" (str "Bearer " api-token)}})
 
 (defn build-request
-  [base-req signals]
-  (assoc base-req :body (json/write-value-as-string signals default-mapper)))
+  [base-req obj-mapper signals]
+  (assoc base-req :body (json/write-value-as-string signals obj-mapper)))
 
-(defn ->send!
-  [{:keys [api-token dataset] :as _conn-opts}]
+(defn build-send!
+  [{:keys [api-token dataset] :as _conn-opts} obj-mapper]
   (let [api-url (format "https://api.axiom.co/v1/datasets/%s/ingest" dataset)
         base-req (base-request api-token)]
-    (fn [ret-body? signals]
-      (let [resp (http/post api-url (build-request base-req signals))]
-        (when ret-body?
-          (-> resp :body (json/read-value default-mapper)))))))
+    (fn [ret-resp? signals]
+      (let [req (build-request base-req obj-mapper signals)
+            resp (http/post api-url req)]
+        (when ret-resp?
+          (update resp :body #(json/read-value % obj-mapper)))))))
 
 (def *default-clean-signal-fn
   (delay (requiring-resolve 'taoensso.telemere.utils/clean-signal-fn)))
@@ -152,21 +155,24 @@
                      renames the `:inst` key to `:_time` and the `:msg_` key to
                      `:msg`, and stringifies the `:data` value, if there's any;
                      see the `build-prepare-fn`;
+   - `:obj-mapper` — an `ObjectMapper` for JSON encoding/decoding both requests
+                     and response bodies; uses `default-obj-mapper` by default;
    - `:ex-handler` — a ternary fn of `phase` #{:prepare-signal :process-batch},
                      Throwable and `arg` (a single signal or vector of signals,
                      depending on the `phase`) that handles an exception/error;
                      the default impl simply prints out an exception.
 
    Returns a handler function."
-  [{:keys [conn-opts rate-ms prepare-fn ex-handler]
+  [{:keys [conn-opts rate-ms prepare-fn obj-mapper ex-handler]
     :or   {conn-opts  {:api-token nil
                        :dataset   nil}
            rate-ms    3000
            prepare-fn default-prepare-fn
+           obj-mapper default-obj-mapper
            ex-handler print-ex-to-stderr}
     :as   constructor-opts}]
   (validate-constructor-opts! constructor-opts)
-  (let [send! (->send! conn-opts)
+  (let [send! (build-send! conn-opts obj-mapper)
         _ (try
             (send! true [(test-signal)])
             (catch Exception ex
