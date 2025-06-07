@@ -23,8 +23,13 @@
 ;; TODO: Account for dynamic rate limits?
 ;;       https://axiom.co/docs/restapi/api-limits#ingest-limits
 
+;; TODO: Support 'gzip'-encoding of requests?
+;;       https://github.com/axiomhq/axiom-js/blob/1d0de5fc52c2c8820dfbfc1827b673be36136089/packages/js/src/client.ts#L34
+
 ;; TODO: Support sending data using OpenTelemetry?
 ;;       https://axiom.co/docs/send-data/opentelemetry
+
+(def axiom-api-url "https://api.axiom.co")
 
 (def axiom-date-format "yyyy-MM-dd'T'HH:mm:ssXXX")
 
@@ -32,22 +37,24 @@
   (json/object-mapper {:date-format   axiom-date-format
                        :decode-key-fn true}))
 
-(defn base-request [api-token]
+(defn base-request [api-token org-id]
   {:content-type :json
    :accept       :json
-   :headers      {"Authorization" (str "Bearer " api-token)}})
+   :headers      (cond-> {"Authorization" (str "Bearer " api-token)}
+                         (some? org-id) (assoc "X-Axiom-Org-Id" org-id))})
 
 (defn build-request
   [base-req obj-mapper signals]
   (assoc base-req :body (json/write-value-as-string signals obj-mapper)))
 
 (defn build-send!
-  [{:keys [api-token dataset] :as _conn-opts} obj-mapper]
-  (let [api-url (format "https://api.axiom.co/v1/datasets/%s/ingest" dataset)
-        base-req (base-request api-token)]
+  [{:keys [api-url api-token org-id dataset] :as _conn-opts} obj-mapper]
+  (let [endpoint (format "%s/v1/datasets/%s/ingest"
+                         (or api-url axiom-api-url) dataset)
+        base-req (base-request api-token org-id)]
     (fn [ret-resp? signals]
       (let [req (build-request base-req obj-mapper signals)
-            resp (http/post api-url req)]
+            resp (http/post endpoint req)]
         (when ret-resp?
           (update resp :body #(json/read-value % obj-mapper)))))))
 
@@ -145,8 +152,9 @@
   "Builds a stateful signal handler that sends all signals to Axiom Ingest API.
 
    Keys of the `constructor-opts` map:
-   - `:conn-opts`  — a map with mandatory `:api-token` and `:dataset` keys that
-                     are used to establish a connection with the Axiom via API;
+   - `:conn-opts`  — a map with all mandatory (`:api-token` and `:dataset`) and
+                     some optional (`:api-url`, `:org-id`) keys, which are used
+                     to establish a connection with the Axiom via REST API;
    - `:rate-ms`    — a positive int that sets the period in millis at which all
                      received signals are prepared and sent in batches; default
                      is 3000 (3 seconds);
@@ -164,8 +172,10 @@
 
    Returns a handler function."
   [{:keys [conn-opts rate-ms prepare-fn obj-mapper ex-handler]
-    :or   {conn-opts  {:api-token nil
-                       :dataset   nil}
+    :or   {conn-opts  {:api-url   axiom-api-url
+                       :api-token nil
+                       :dataset   nil
+                       :org-id    nil}
            rate-ms    3000
            prepare-fn default-prepare-fn
            obj-mapper default-obj-mapper
