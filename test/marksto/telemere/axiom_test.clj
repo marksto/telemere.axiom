@@ -226,6 +226,7 @@
       (is (instance? Exception res)
           "An exception must be thrown")
 
+      ;; NB: The handler is already stopped, so we can check the state.
       (let [test-state @*test-state]
         (is (= 1 (count (-> test-state :requests :failed)))
             "There must be exactly 1 failed requests")
@@ -240,7 +241,7 @@
 
 (deftest handler:axiom-successful-logging-test
   (testing "successful logging"
-    (let [log-calls-num (inc (rand-int 100))]
+    (let [log-calls-num (inc (rand-int (- sut/max-batch-size 1000)))]
       (tel/with-handler
         :axiom
         (sut/handler:axiom {:conn-opts {:api-url   fake-api-url:success
@@ -251,6 +252,7 @@
                      :data  {:n n}
                      :msg   "Message"})))
 
+      ;; NB: The handler is already stopped, so we can check the state.
       (let [test-state @*test-state]
         (is (empty? (-> test-state :requests :failed))
             "There must be no failed requests")
@@ -271,7 +273,7 @@
 
 (deftest handler:axiom-basic-signals-batching-test
   (testing "basic signals batching"
-    (let [log-calls-num (quot sut/max-batch-size 10)
+    (let [log-calls-num sut/max-batch-size
           total-batches 10
           batch-size (quot log-calls-num total-batches)]
       (tel/with-handler
@@ -286,8 +288,9 @@
                          :data  {:n n}
                          :msg   "Message"}))
             ;; NB: The final sleep must take long enough.
-            (Thread/sleep (long (* total-batches 100)))))
+            (Thread/sleep (long (/ log-calls-num 2)))))
 
+      ;; NB: The handler is already stopped, so we can check the state.
       (let [test-state @*test-state]
         (is (empty? (-> test-state :requests :failed))
             "There must be no failed requests")
@@ -311,7 +314,7 @@
 
 (deftest handler:axiom-signals-flushing-test
   (testing "signals flushing (and how it affects signals batching)"
-    (let [log-calls-num (quot sut/max-batch-size 10)
+    (let [log-calls-num sut/max-batch-size
           total-batches 10
           batch-size (quot log-calls-num total-batches)]
       (tel/with-handler
@@ -326,6 +329,7 @@
                      :data  {:n n}
                      :msg   "Message"})))
 
+      ;; NB: The handler is already stopped, so we can check the state.
       (let [test-state @*test-state]
         (is (empty? (-> test-state :requests :failed))
             "There must be no failed requests")
@@ -348,6 +352,16 @@
             (is (apply < (map #(-> % :data edn/read-string :n) signals))
                 "Signals must be sent in the same order in which they were logged")))))))
 
+
+
 (comment
+  ;; For a single test suite run
   (time (clojure.test/run-tests))
+
+  ;; For hard-to-reproduce concurrency issues
+  (loop []
+    (let [res (time (clojure.test/run-tests))]
+      (when (zero? (:fail res))
+        (recur))))
+
   :end/comment)
