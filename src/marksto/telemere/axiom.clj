@@ -79,7 +79,9 @@
    - `:clean-signal-opts` — a map of options passed to `clean-signal-fn`
                             in case the `:clean-signal?` is `true`;
    - `:data-update-fn`    — a unary fn for updating the signal's `:data`
-                            value, e.g. stringifying/prettifying it."
+                            value, e.g. stringifying/prettifying it.
+
+   Always renames signal keys: `:inst` to `:_time` and `:msg_` to `:msg`."
   [{:keys [clean-signal? clean-signal-opts data-update-fn]}]
   (let [clean-signal (if clean-signal?
                        (@*default-clean-signal-fn clean-signal-opts)
@@ -97,7 +99,11 @@
           (set/rename-keys renames)
           (prepare-data)))))
 
-(defn ->default-prepare-fn []
+(defn ->default-prepare-fn
+  "Builds default `:prepare-fn` that cleans a signal by Telemere's built-in fn,
+   renames keys, and also stringifies/prettifies the `:data` value, if there's
+   any, so that it is an EDN-formatted 'stringType' in your Axiom's dataset."
+  []
   (build-prepare-fn {:clean-signal?  true
                      :data-update-fn #(with-out-str (pp/pprint %))}))
 
@@ -201,12 +207,10 @@
                      some optional (`:api-url`, `:org-id`) keys, which are used
                      to establish a connection with the Axiom via REST API;
    - `:prepare-fn` — a unary fn that modifies every signal prior to sending it;
-                     the default impl applies the Telemere's `clean-signal-fn`,
-                     renames the `:inst` key to `:_time` and the `:msg_` key to
-                     `:msg`, and stringifies the `:data` value, if there's any;
-                     see the `build-prepare-fn`;
+                     if not specified the default is used; build a custom value
+                     with `build-prepare-fn`;
    - `:obj-mapper` — an `ObjectMapper` for JSON encoding/decoding both requests
-                     and response bodies; uses `default-obj-mapper` by default;
+                     and response bodies; if not specified the default is used;
    - `:ex-handler` — a ternary fn of `phase` #{:prepare-signal :process-batch},
                      Throwable and `arg` (a single signal or vector of signals,
                      depending on the `phase`) that handles an exception/error;
