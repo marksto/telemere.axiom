@@ -5,6 +5,7 @@
             [jsonista.core :as json]
             [marksto.telemere.axiom :as sut]
             [matcher-combinators.test]
+            [matcher-combinators.matchers :as m]
             [taoensso.telemere :as tel])
   (:import (clojure.lang ExceptionInfo)
            (java.time Instant)))
@@ -99,6 +100,7 @@
     (f)))
 
 (use-fixtures :each with-fake-http)
+(use-fixtures :once (fn [f] (tel/remove-handler! :default/console) (f)))
 
 (def test-api-token (str "xaat-" (random-uuid)))
 (def test-dataset "test-dataset")
@@ -166,51 +168,42 @@
 (deftest default-prepare-fn-test
   (testing "preparing a signal (default impl)"
     (let [some-inst (Instant/now)
-          some-uuid (random-uuid)
-          some-runtime-signal {:schema 1
-                               :inst   some-inst
-                               :ns     "marksto.telemere.axiom-test"
-                               :coords [170 31]
+          some-uuid (random-uuid)]
+      (is (match?
+            (m/nested-equals
+              {:_time  some-inst
+               :ns     "marksto.telemere.axiom-test"
+               :coords (m/via vector? true)
 
-                               :kind   :log
-                               :level  :info
-                               :id     ::id
-                               :uid    some-uuid
+               :kind   :log
+               :level  :info
+               :id     ::id
+               :uid    some-uuid
 
-                               :msg_   (delay "Forced message")
-                               :data   {:attr-1 12345
-                                        :attr-2 "abc"
-                                        :attr-3 :kwd!
-                                        :attr-4 [1 2]
-                                        :attr-5 false}
-                               :error  (ex-info "Error" {:error true})
+               :msg    "Forced message"
+               :data   "{:attr-1 12345,\n :attr-2 \"abc\",\n :attr-3 :kwd!,\n :attr-4 [1 2],\n :attr-5 false}\n"
+               :error  [{:type `ExceptionInfo
+                         :msg  "Error"
+                         :data {:error true}}]
 
-                               :ctx    {:req-id 1234567890}
-
-                               :host   {:name "localhost"
-                                        :ip   "192.168.0.100"}
-                               :thread {:name  "main"
-                                        :id    1
-                                        :group "main"}
-
-                               :extra  :app-level-key}]
-      (is (= {:_time  some-inst
-              :ns     "marksto.telemere.axiom-test"
-              :coords [170 31]
-
-              :kind   :log
-              :level  :info
-              :id     ::id
-              :uid    some-uuid
-
-              :msg    "Forced message"
-              :data   "{:attr-1 12345,\n :attr-2 \"abc\",\n :attr-3 :kwd!,\n :attr-4 [1 2],\n :attr-5 false}\n"
-              :error  [{:type `ExceptionInfo
-                        :msg  "Error"
-                        :data {:error true}}]
-
-              :ctx    {:req-id 1234567890}}
-             ((sut/->default-prepare-fn) some-runtime-signal))))))
+               :ctx    {:req-id 1234567890}})
+            ((sut/->default-prepare-fn)
+             (tel/with-signal
+               (tel/with-ctx+
+                 {:req-id 1234567890}
+                 (tel/log! {:inst  some-inst
+                            :level :info
+                            :id    ::id
+                            :uid   some-uuid
+                            :msg   (delay "Forced message")
+                            :data  {:attr-1 12345
+                                    :attr-2 "abc"
+                                    :attr-3 :kwd!
+                                    :attr-4 [1 2]
+                                    :attr-5 false}
+                            :error (ex-info "Error" {:error true})
+                            :extra :app-level-key})))))
+          "The default `:prepare-fn` contract must be strictly followed"))))
 
 (deftest handler:axiom-failed-test-signal-test
   (testing "failed test signal"
