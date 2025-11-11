@@ -1,6 +1,6 @@
 {:paths ["src"]
 
- :deps  {org.clojure/clojure {:mvn/version "1.12.2"}
+ :deps  {org.clojure/clojure {:mvn/version "1.12.3"}
 
          clj-http/clj-http   {:mvn/version "3.13.1"}
          metosin/jsonista    {:mvn/version "0.3.13"}}
@@ -25,6 +25,6 @@
                "--ignore-locals"]}
 
   :build
-  {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.10"}
+  {:deps       {io.github.clojure/tools.build {:mvn/version "0.10.11"}
                 slipset/deps-deploy           {:mvn/version "0.2.2"}}
    :ns-default build}}}
