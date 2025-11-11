@@ -16,7 +16,8 @@
             [clojure.pprint :as pp]
             [clojure.set :as set]
             [clojure.stacktrace :refer [print-cause-trace]]
-            [jsonista.core :as json])
+            [jsonista.core :as json]
+            [marksto.telemere.utils :as utils])
   (:import (java.time Instant)
            (java.util.concurrent ConcurrentLinkedDeque
                                  Executors
@@ -124,12 +125,9 @@
 (defn shutdown-uninterruptedly!
   [executor period-ms]
   (ScheduledExecutorService/.shutdown executor)
-  (while (not (try
-                (ScheduledExecutorService/.awaitTermination
-                  executor (quot period-ms 10) TimeUnit/MILLISECONDS)
-                (catch InterruptedException _
-                  (Thread/.interrupt (Thread/currentThread))
-                  false)))))
+  (utils/uninterruptibly
+    (while (not (ScheduledExecutorService/.awaitTermination
+                  executor (quot period-ms 10) TimeUnit/MILLISECONDS)))))
 
 (defn collect-batch
   [all-sigs batch-size]
@@ -175,10 +173,6 @@
    :msg   "Axiom handler is added"
    :ctx   @(requiring-resolve 'taoensso.telemere/*ctx*)})
 
-(defn val+type [obj]
-  {:value obj
-   :type  (type obj)})
-
 (defn validate-constructor-opts!
   [{{:keys [api-token dataset]} :conn-opts
     batch-size                  :batch-size
@@ -186,18 +180,22 @@
     :as                         constructor-opts}]
   (when-not (string? api-token)
     (throw
-      (ex-info "Expected `:conn-opts :api-token` string" (val+type api-token))))
+      (ex-info "Expected `:conn-opts :api-token` string"
+               (utils/value+type api-token))))
   (when-not (string? dataset)
     (throw
-      (ex-info "Expected `:conn-opts :dataset` string" (val+type dataset))))
+      (ex-info "Expected `:conn-opts :dataset` string"
+               (utils/value+type dataset))))
   (when (and (contains? constructor-opts :batch-size)
              (not (pos-int? batch-size)))
     (throw
-      (ex-info "Expected `:batch-size` positive integer" (val+type batch-size))))
+      (ex-info "Expected `:batch-size` positive integer"
+               (utils/value+type batch-size))))
   (when (and (contains? constructor-opts :period-ms)
              (not (pos-int? period-ms)))
     (throw
-      (ex-info "Expected `:period-ms` positive integer" (val+type period-ms)))))
+      (ex-info "Expected `:period-ms` positive integer"
+               (utils/value+type period-ms)))))
 
 (defn handler:axiom
   "Builds a stateful signal handler that sends all signals to Axiom Ingest API.
